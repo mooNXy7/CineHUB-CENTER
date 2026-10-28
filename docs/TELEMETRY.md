@@ -1,63 +1,37 @@
-# Telemetria CineHUB — proposta de integração
+# CineHUB Telemetry — implantação de teste
 
-## Objetivo
+## O que foi preparado
+- Supabase migration para uma tabela privada de eventos.
+- Edge Function `cinehub-telemetry` que valida e grava eventos usando a chave de serviço apenas no servidor.
+- Cliente de telemetria de teste em Web e TV.
+- O cliente só envia eventos quando a URL contém `?telemetry=1`; portanto, o código em branch não ativa coleta normal.
 
-Contabilizar instalações/dispositivos identificados, aberturas do app, sessões e usuários ativos por período, sem fingir que o GitHub consegue observar o uso dos aplicativos.
+## Projeto alvo
+Os clientes Web/TV atuais apontam para o projeto Supabase `qdheeiitzlvynshvkwcs` para o catálogo. Antes de publicar, confirmar no dashboard Supabase que este é o projeto correto para telemetria compartilhada.
 
-## Estado atual
+## Arquivos de backend
+- `supabase/migrations/202610280001_cinehub_telemetry.sql`: tabela e RLS.
+- `supabase/functions/cinehub-telemetry/index.ts`: endpoint de ingestão.
+- `supabase/config.toml`: configuração da função.
 
-A telemetria **não está implementada**. Não há endpoint conectado aos aplicativos CineHUB TV ou Mobile, nem banco de dados de eventos. O dashboard deve exibir ausência de dados como "não conectado", nunca como zero usuários.
+## Arquivos cliente
+- Web: `src/js/telemetry.js`, carregado antes do app principal.
+- TV: `android/CineHUB-TV/src/main/assets/cinehub/js/telemetry.js`, carregado antes do app principal.
+- Mobile abre o CineHUB Web com `?mobile=1`; por isso compartilha o cliente Web e é identificado pelo user-agent nativo. A versão aparece como `unknown` até o WebView expor uma versão verificável.
 
-## Eventos mínimos propostos
+## Publicação necessária
+1. Confirmar o projeto alvo no Supabase.
+2. Aplicar a migration no SQL Editor.
+3. Fazer deploy da função `cinehub-telemetry`.
+4. Configurar secret `SUPABASE_PUBLISHABLE_KEY` com a publishable key atual. A função também usa `SUPABASE_URL` e `SUPABASE_SERVICE_ROLE_KEY` do ambiente Supabase; nunca colocar a service-role key no GitHub ou nos apps.
+5. Testar via URL com `?telemetry=1`, verificar linhas na tabela e depois desativar a flag de teste.
 
-- `app_open`: abertura do aplicativo.
-- `session_start`: início de uma sessão.
-- `heartbeat`: sinal periódico opcional para estimar atividade em janela curta.
-- `session_end`: encerramento, quando o app consegue detectá-lo.
-- `app_error`: falha não fatal ou crash report, após desenho separado de privacidade.
+## Contrato e privacidade
+Eventos aceitos: `app_open`, `session_start`, `heartbeat`, `session_end`, `app_error`, `playback_start`, `playback_error`, `playback_success`. O cliente não envia título assistido, URL de stream, nome, e-mail ou localização. A função reduz propriedades a uma allowlist e faz hash dos IDs no servidor.
 
-Cada evento deve conter apenas: nome do evento permitido, versão do app, plataforma (TV/Mobile), timestamp do servidor e um identificador aleatório de instalação rotacionável. Não coletar nome, e-mail, endereço, localização precisa, lista de reprodução, histórico de visualização ou URLs de streams.
-
-## Métricas e definições
-
-- **Aberturas:** contagem de eventos `app_open` recebidos e validados.
-- **Dispositivos identificados:** IDs pseudônimos únicos observados no período selecionado; não equivalem a pessoas.
-- **Sessões:** sessões iniciadas com deduplicação e regras documentadas para timeout.
-- **Ativos agora:** instalações com heartbeat/sessão válida dentro de uma janela configurada (por exemplo, 5 minutos); deixar claro que é uma estimativa.
-- **Ativos diários/mensais:** IDs pseudônimos distintos com ao menos um evento elegível no período.
-
-## Segurança e privacidade obrigatórias antes de ligar
-
-1. Publicar aviso de privacidade claro e definir base legal, finalidade, retenção e canal de contato apropriados.
-2. Criar endpoint server-side autenticado por app/ambiente, com validação estrita, rate limiting e limites de payload.
-3. Não embutir segredos de servidor no APK nem no JavaScript público. Chaves compartilhadas dentro de APK podem ser extraídas; usar proteção contra abuso e credenciais rotacionáveis, não confiar em um segredo fixo no cliente.
-4. Evitar identificadores persistentes desnecessários; permitir rotação e exclusão conforme política.
-5. Armazenar eventos em banco com acesso restrito, criptografia e retenção limitada; expor ao painel apenas agregados.
-6. Proteger o painel administrativo com autenticação e autorização no servidor.
-7. Testar eventos sintéticos e validar deduplicação antes de mostrar números como produção.
-
-## Contrato de API sugerido
-
-`POST /v1/events`
-
-Payload de exemplo (somente contrato; ainda não existe endpoint ativo):
-
-```json
-{
-  "event": "app_open",
-  "platform": "tv",
-  "app_version": "1.3.3",
-  "installation_id": "random-pseudonymous-id",
-  "occurred_at": "2026-10-28T12:00:00Z"
-}
-```
-
-O servidor deve validar e registrar o timestamp de recebimento próprio. O campo de exemplo não representa dado real de nenhum usuário.
-
-## Próximas tarefas
-
-- Selecionar backend e armazenamento (por exemplo, Worker + D1, se confirmado no ambiente).
-- Criar endpoint e testes automatizados.
-- Implementar dashboard administrativo protegido.
-- Integrar Mobile e TV em mudanças separadas e testáveis.
-- Validar com eventos sintéticos antes de ativar coleta real.
+## Limitações antes de produção
+- A publishable key é pública e extraível; não é autenticação forte. A função precisa de rate limiting/antiabuso antes de produção.
+- CORS está aberto para permitir apps em múltiplas origens.
+- Configurar retenção/exclusão periódica e publicar aviso de privacidade antes de ativar coleta geral.
+- O painel ainda precisa de endpoint de métricas agregadas com autenticação de administrador; não consultar a tabela diretamente do browser.
+- Playback events são suportados pelo contrato, mas os callbacks do player ainda não foram ligados nesta etapa.
