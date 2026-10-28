@@ -1,0 +1,79 @@
+name: Monitorar repositórios CineHUB
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+  issues: read
+
+concurrency:
+  group: cinehub-repository-monitor
+  cancel-in-progress: true
+
+jobs:
+  monitor:
+    name: Verificar estado dos projetos
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Consultar repositórios públicos
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          repos=(
+            "mooNXy7/CineHUB|Mobile"
+            "mooNXy7/CineHUB-TV|TV"
+            "mooNXy7/CineHUB-WEB|Web"
+            "mooNXy7/CineHUB-ACERVO|Acervo"
+            "mooNXy7/CineHUB-CENTER|Center"
+          )
+
+          echo "# Monitoramento CineHUB" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Executado em: $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Projeto | Estado da API | Branch padrão | Último commit | Issues abertas | Último workflow |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|---|---|---|---|---:|---|" >> "$GITHUB_STEP_SUMMARY"
+
+          failures=0
+          for item in "${repos[@]}"; do
+            repo="${item%%|*}"
+            label="${item##*|}"
+
+            if ! meta=$(gh api "repos/$repo" 2>/dev/null); then
+              echo "| $label (`$repo`) | ⚠️ API indisponível | — | — | — | — |" >> "$GITHUB_STEP_SUMMARY"
+              failures=$((failures + 1))
+              continue
+            fi
+
+            branch=$(jq -r '.default_branch // "—"' <<< "$meta")
+            issues=$(gh api "repos/$repo/issues?state=open&per_page=100" --jq '[.[] | select(has("pull_request") | not)] | length' 2>/dev/null || echo "—")
+            commit_data=$(gh api "repos/$repo/commits?per_page=1" 2>/dev/null || echo '[]')
+            commit_sha=$(jq -r '.[0].sha // "—"' <<< "$commit_data" | cut -c1-7)
+            commit_msg=$(jq -r '.[0].commit.message // "Sem commits retornados"' <<< "$commit_data" | head -n1 | tr '|' '/')
+            run_data=$(gh api "repos/$repo/actions/runs?per_page=1" 2>/dev/null || echo '{"workflow_runs":[]}')
+            run_name=$(jq -r '.workflow_runs[0].name // "Sem workflow detectado"' <<< "$run_data" | tr '|' '/')
+            run_state=$(jq -r 'if (.workflow_runs|length)==0 then "—" else (.workflow_runs[0].conclusion // .workflow_runs[0].status // "—") end' <<< "$run_data")
+            if [[ "$run_state" == "failure" ]]; then
+              failures=$((failures + 1))
+              run_state="❌ failure"
+            fi
+
+            echo "| [$label](https://github.com/$repo) | ✅ OK | `$branch` | `$commit_sha` $commit_msg | $issues | $run_name — $run_state |" >> "$GITHUB_STEP_SUMMARY"
+          done
+
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Projetos com API indisponível ou último workflow em falha: **$failures**." >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "> Este relatório observa metadados públicos e GitHub Actions. Não confirma ausência de bugs em produção e não publica alterações nos aplicativos."
+
+          if [[ "$failures" -gt 0 ]]; then
+            echo "::warning::$failures projeto(s) exigem inspeção no resumo do workflow."
+          fi
