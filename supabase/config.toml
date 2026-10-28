@@ -1,0 +1,5 @@
+[functions.cinehub-telemetry]
+verify_jwt = false
+
+[functions.cinehub-telemetry-metrics]
+verify_jwt = true
