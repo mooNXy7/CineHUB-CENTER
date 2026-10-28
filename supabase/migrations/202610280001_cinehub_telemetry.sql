@@ -20,6 +20,8 @@ create index if not exists cinehub_telemetry_app_received_idx
   on public.cinehub_telemetry_events (app_id, received_at desc);
 create index if not exists cinehub_telemetry_event_received_idx
   on public.cinehub_telemetry_events (event_name, received_at desc);
+create index if not exists cinehub_telemetry_installation_received_idx
+  on public.cinehub_telemetry_events (installation_hash, received_at desc);
 
 alter table public.cinehub_telemetry_events enable row level security;
 revoke all on public.cinehub_telemetry_events from anon, authenticated;
