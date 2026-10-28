@@ -34,14 +34,31 @@ async function hash(value: string): Promise<string> {
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") return response(405, { error: "method_not_allowed" });
-  if (PUBLISHABLE_KEY && req.headers.get("apikey") !== PUBLISHABLE_KEY) {
+  // Fail closed if the expected public client key has not been configured.
+  if (!PUBLISHABLE_KEY || req.headers.get("apikey") !== PUBLISHABLE_KEY) {
     return response(401, { error: "invalid_client_key" });
   }
-  const length = Number(req.headers.get("content-length") || "0");
-  if (length > 8192) return response(413, { error: "payload_too_large" });
+
+  let rawBody: string;
+  try {
+    rawBody = await req.text();
+    if (new TextEncoder().encode(rawBody).byteLength > 8192) {
+      return response(413, { error: "payload_too_large" });
+    }
+  } catch {
+    return response(400, { error: "invalid_body" });
+  }
 
   let body: Record<string, unknown>;
-  try { body = await req.json(); } catch { return response(400, { error: "invalid_json" }); }
+  try {
+    const parsed: unknown = JSON.parse(rawBody);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return response(400, { error: "invalid_json_object" });
+    }
+    body = parsed as Record<string, unknown>;
+  } catch {
+    return response(400, { error: "invalid_json" });
+  }
   const eventId = String(body.event_id || "");
   const eventName = String(body.event || "");
   const appId = String(body.app_id || "");
@@ -75,6 +92,19 @@ Deno.serve(async (req) => {
     properties,
     // Never trust a client timestamp; received_at is assigned by Postgres.
   };
+  // Best-effort per-installation rate limit; add edge-level controls before production.
+  const since = new Date(Date.now() - 60_000).toISOString();
+  const { count, error: countError } = await db
+    .from("cinehub_telemetry_events")
+    .select("event_id", { count: "exact", head: true })
+    .eq("installation_hash", row.installation_hash)
+    .gte("received_at", since);
+  if (countError) {
+    console.error("telemetry_rate_check_failed", countError.code);
+    return response(503, { error: "temporarily_unavailable" });
+  }
+  if ((count ?? 0) >= 30) return response(429, { error: "rate_limited" });
+
   const { error } = await db.from("cinehub_telemetry_events").insert(row);
   if (error?.code === "23505") return response(200, { ok: true, duplicate: true });
   if (error) {
