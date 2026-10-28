@@ -35,3 +35,14 @@ Eventos aceitos: `app_open`, `session_start`, `heartbeat`, `session_end`, `app_e
 - Configurar retenção/exclusão periódica e publicar aviso de privacidade antes de ativar coleta geral.
 - O painel ainda precisa de endpoint de métricas agregadas com autenticação de administrador; não consultar a tabela diretamente do browser.
 - Playback events são suportados pelo contrato, mas os callbacks do player ainda não foram ligados nesta etapa.
+
+
+## Endpoint administrativo de métricas
+- `supabase/functions/cinehub-telemetry-metrics/index.ts` expõe somente agregados para 24h, 7 dias e 30 dias.
+- Requer sessão Supabase válida e `app_metadata.role = "admin"`; não confia em `user_metadata`, que o próprio usuário pode alterar.
+- `supabase/config.toml` mantém JWT obrigatório para o endpoint de métricas.
+- A função SQL `cinehub_telemetry_summary(timestamptz)` só concede EXECUTE a `service_role`, e a Edge Function faz a verificação administrativa antes de chamar a RPC.
+- Antes de ligar ao painel, atribuir o papel administrativo pelo mecanismo seguro de administração do projeto Supabase e testar que usuário comum recebe 403. Não colocar a service-role key no painel.
+
+## Limitação do rate limit
+O limite por instalação na função de ingestão é uma proteção inicial baseada em contagem no banco, não substitui rate limiting no edge/WAF. Antes de produção, adicionar proteção na borda e monitoramento de custos.
