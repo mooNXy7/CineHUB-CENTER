@@ -2,6 +2,11 @@
 
 Central de monitoramento do ecossistema CineHUB.
 
+## Acessar
+
+- **Painel web:** https://cinehub-center-dex.pages.dev (a primeira implantação pode levar alguns minutos após conectar o repositório).
+- **Código-fonte:** https://github.com/mooNXy7/CineHUB-CENTER
+
 ## Estado inicial
 
 Esta primeira versão é uma interface estática que consulta a API pública do GitHub no navegador, sem token privilegiado. Mostra metadados reais dos repositórios configurados, commits recentes, releases publicadas, issues abertas e execuções recentes de GitHub Actions.
@@ -12,17 +17,22 @@ Esta primeira versão é uma interface estática que consulta a API pública do 
 - `mooNXy7/CineHUB-TV` — TV
 - `mooNXy7/CineHUB-WEB` — Web
 - `mooNXy7/CineHUB-ACERVO` — Acervo
+- `mooNXy7/CineHUB-CENTER` — Central
 
 ## Publicação
 
-Pode ser publicado como site estático no Cloudflare Pages ou GitHub Pages apontando para a raiz do repositório. O arquivo de entrada é `index.html`.
+O site é publicado pelo Cloudflare Pages conectado à branch `main`. O arquivo de entrada é `index.html`.
+
+## Monitoramento agendado
+
+O workflow `.github/workflows/monitor-repositories.yml` consulta os repositórios a cada 15 minutos e gera um resumo de execução no GitHub Actions. Ele é observacional e não altera os aplicativos nem publica OTA.
 
 ## Limitações importantes
 
 - O painel atual é observacional: não publica OTA, não altera repositórios e não executa deploys.
-- A atualização automática do navegador consulta os endpoints públicos do GitHub a cada 60 segundos. Para monitoramento confiável, webhooks e histórico persistente, configurar um serviço de backend.
+- A atualização automática do navegador consulta os endpoints públicos do GitHub a cada 60 segundos. O workflow agendado acrescenta verificações periódicas, mas o histórico persistente de métricas exige backend.
 - Issues e falhas de Actions ajudam a sinalizar problemas, mas não detectam automaticamente todos os bugs em produção.
-- Estatísticas de dispositivos ainda não estão conectadas. Para contar aberturas, sessões e dispositivos ativos, é necessário integrar os apps com uma API de telemetria, definir política de privacidade e armazenar dados agregados de forma segura.
+- Estatísticas de dispositivos ainda não estão conectadas. Para contar aberturas, sessões e dispositivos ativos, é necessário integrar os apps com uma API de telemetria, definir política de privacidade e armazenar dados agregados de forma segura. Consulte [docs/TELEMETRY.md](docs/TELEMETRY.md).
 - A área administrativa ainda não tem autenticação. Não colocar dados privados ou ações privilegiadas em produção antes de proteger o acesso (por exemplo, Cloudflare Access) e configurar backend.
 - Nunca colocar tokens de GitHub, chaves de API ou segredos no JavaScript público.
 
@@ -33,7 +43,7 @@ Os repositórios de Gabriel Saimo informados pelo responsável podem ser consult
 ## Próximas etapas recomendadas
 
 1. Validar o layout e o monitoramento de metadados reais.
-2. Configurar deploy contínuo no Cloudflare Pages.
+2. Confirmar a implantação do Cloudflare Pages.
 3. Configurar monitoramento server-side via GitHub Actions/webhooks e histórico persistente.
 4. Adicionar autenticação administrativa.
 5. Implementar endpoint de telemetria e integrar Mobile/TV somente após desenho de privacidade e aprovação explícita.
